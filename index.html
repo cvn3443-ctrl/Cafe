@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام إدارة ساعات العمل</title>
+    <style>
+        * { box-sizing: border-box; font-family: 'Tahoma', sans-serif; }
+        body { background: #f0f2f5; margin: 0; padding: 20px; }
+        .container { max-width: 500px; margin: auto; background: white; border-radius: 20px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        h1, h2 { text-align: center; color: #1a3c6e; }
+        input, select, button, textarea { width: 100%; padding: 10px; margin: 6px 0; border: 1px solid #ccc; border-radius: 10px; font-size: 14px; }
+        textarea { resize: vertical; min-height: 35px; font-family: inherit; }
+        button { background: #1a3c6e; color: white; font-weight: bold; border: none; cursor: pointer; }
+        button:hover { background: #14325a; }
+        .btn-danger { background: #c0392b; }
+        .btn-success { background: #27ae60; }
+        .btn-warning { background: #f39c12; }
+        .btn-gray { background: #95a5a6; }
+        .btn-holiday { background: #8e44ad; }
+        .btn-holiday.active { background: #e74c3c; }
+        .employee-card { background: #f8f9fa; padding: 12px; margin: 8px 0; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+        .employee-card:hover { background: #e9ecef; }
+        .hidden { display: none; }
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+        th, td { border: 1px solid #ddd; padding: 5px; text-align: center; vertical-align: middle; }
+        th { background: #1a3c6e; color: white; font-size: 12px; }
+        .positive { color: green; font-weight: bold; }
+        .negative { color: red; font-weight: bold; }
+        .zero { color: gray; }
+        .summary { background: #e8f0fe; padding: 15px; border-radius: 10px; margin: 10px 0; font-size: 14px; }
+        .lock-icon { font-size: 24px; cursor: pointer; }
+        .settings-row { display: flex; gap: 10px; align-items: center; }
+        .settings-row input { width: 60%; }
+        .settings-row button { width: 40%; }
+        .btn-small { padding: 4px 6px; font-size: 11px; margin: 2px; width: auto; }
+        .holiday-tag { background: #e74c3c; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+        td input[type="time"] { width: 65px; padding: 3px; font-size: 11px; }
+        td textarea { width: 80px; min-height: 30px; font-size: 11px; padding: 3px; }
+        .break-buttons { display: flex; gap: 3px; flex-wrap: wrap; justify-content: center; }
+        .note-cell { min-width: 80px; }
+    </style>
+</head>
+<body>
+<div class="container" id="app">
+    <!-- شاشة تسجيل الدخول -->
+    <div id="loginScreen">
+        <h1>🔐 نظام إدارة الموظفين</h1>
+        <input type="password" id="passwordInput" placeholder="أدخل كلمة السر">
+        <button onclick="login()">دخول</button>
+        <p style="color:red;text-align:center;" id="loginError"></p>
+    </div>
+
+    <!-- الشاشة الرئيسية -->
+    <div id="mainScreen" class="hidden">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h1>👥 الموظفين</h1>
+            <span class="lock-icon" onclick="logout()">🔓</span>
+        </div>
+        <button class="btn-success" onclick="showAddEmployee()">➕ إضافة موظف</button>
+        <div id="employeeList"></div>
+
+        <!-- إضافة موظف -->
+        <div id="addEmployeeForm" class="hidden">
+            <input type="text" id="newName" placeholder="اسم الموظف">
+            <button onclick="addEmployee()">إضافة</button>
+            <button class="btn-danger" onclick="hideAddEmployee()">إلغاء</button>
+        </div>
+
+        <!-- جدول موظف -->
+        <div id="employeeTable" class="hidden">
+            <button onclick="backToEmployees()">🔙 رجوع</button>
+            <h2 id="employeeNameTitle"></h2>
+            
+            <!-- إعدادات ساعات العمل -->
+            <div class="settings-row">
+                <input type="number" id="workHoursInput" min="1" max="24" step="0.5" value="8">
+                <button class="btn-warning" onclick="updateWorkHours()">⚙️ ضبط</button>
+            </div>
+            <p style="font-size:14px;color:gray;text-align:center;">ساعات العمل الحالية: <span id="currentWorkHoursDisplay">8</span> ساعات</p>
+
+            <button class="btn-success" onclick="addDay()">➕ إضافة يوم</button>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>اليوم</th>
+                            <th>بداية الدوام</th>
+                            <th>بداية الاستراحة</th>
+                            <th>نهاية الاستراحة</th>
+                            <th>نهاية الدوام</th>
+                            <th>الفرق</th>
+                            <th>📝 ملاحظة</th>
+                            <th>عطلة</th>
+                            <th>حذف</th>
+                        </tr>
+                    </thead>
+                    <tbody id="daysTableBody"></tbody>
+                </table>
+            </div>
+            <div class="summary" id="monthSummary"></div>
+            <button class="btn-danger" onclick="deleteEmployee()">🗑️ حذف الموظف</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --------------------- البيانات ---------------------
+    let employees = [];
+    let currentEmployeeIndex = null;
+    const PASSWORD = "1234";
+
+    function loadData() {
+        const data = localStorage.getItem('employeesData');
+        if (data) employees = JSON.parse(data);
+        else {
+            employees = [
+                { name: "أحمد", workHours: 8, days: [] },
+                { name: "محمد", workHours: 8, days: [] }
+            ];
+        }
+    }
+
+    function saveData() {
+        localStorage.setItem('employeesData', JSON.stringify(employees));
+    }
+
+    // --------------------- تسجيل الدخول ---------------------
+    function login() {
+        const pass = document.getElementById('passwordInput').value;
+        if (pass === PASSWORD) {
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('mainScreen').classList.remove('hidden');
+            document.getElementById('loginError').textContent = '';
+            renderEmployees();
+        } else {
+            document.getElementById('loginError').textContent = 'كلمة السر غير صحيحة';
+        }
+    }
+
+    function logout() {
+        document.getElementById('mainScreen').classList.add('hidden');
+        document.getElementById('loginScreen').classList.remove('hidden');
+        document.getElementById('passwordInput').value = '';
+    }
+
+    // --------------------- عرض الموظفين ---------------------
+    function renderEmployees() {
+        const list = document.getElementById('employeeList');
+        list.innerHTML = '';
+        employees.forEach((emp, index) => {
+            const div = document.createElement('div');
+            div.className = 'employee-card';
+            div.innerHTML = `<span>${emp.name}</span><span>${emp.days.length} أيام</span>`;
+            div.onclick = () => showEmployee(index);
+            list.appendChild(div);
+        });
+    }
+
+    // --------------------- إضافة موظف ---------------------
+    function showAddEmployee() {
+        document.getElementById('addEmployeeForm').classList.remove('hidden');
+    }
+    function hideAddEmployee() {
+        document.getElementById('addEmployeeForm').classList.add('hidden');
+        document.getElementById('newName').value = '';
+    }
+    function addEmployee() {
+        const name = document.getElementById('newName').value.trim();
+        if (!name) return alert('الرجاء إدخال اسم');
+        employees.push({ name, workHours: 8, days: [] });
+        saveData();
+        renderEmployees();
+        hideAddEmployee();
+    }
+
+    // --------------------- عرض جدول الموظف ---------------------
+    function showEmployee(index) {
+        currentEmployeeIndex = index;
+        const emp = employees[index];
+        document.getElementById('employeeList').classList.add('hidden');
+        document.getElementById('addEmployeeForm').classList.add('hidden');
+        document.getElementById('employeeTable').classList.remove('hidden');
+        document.getElementById('employeeNameTitle').textContent = emp.name;
+        document.getElementById('workHoursInput').value = emp.workHours || 8;
+        document.getElementById('currentWorkHoursDisplay').textContent = emp.workHours || 8;
+        renderDays();
+    }
+
+    function backToEmployees() {
+        document.getElementById('employeeTable').classList.add('hidden');
+        document.getElementById('employeeList').classList.remove('hidden');
+        renderEmployees();
+    }
+
+    // --------------------- ضبط ساعات العمل ---------------------
+    function updateWorkHours() {
+        const emp = employees[currentEmployeeIndex];
+        const hours = parseFloat(document.getElementById('workHoursInput').value);
+        if (!hours || hours < 1 || hours > 24) {
+            alert('الرجاء إدخال عدد ساعات صحيح بين 1 و 24');
+            return;
+        }
+        emp.workHours = hours;
+        document.getElementById('currentWorkHoursDisplay').textContent = hours;
+        saveData();
+        renderDays();
+        alert(`تم ضبط ساعات العمل لـ ${emp.name} إلى ${hours} ساعات`);
+    }
+
+    // --------------------- دالة جلب التاريخ التالي ---------------------
+    function getNextDate(currentDate) {
+        if (!currentDate) {
+            const now = new Date();
+            return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+        }
+        const parts = currentDate.split('-');
+        let year = parseInt(parts[0]);
+        let month = parseInt(parts[1]);
+        let day = parseInt(parts[2]);
+        const daysInMonth = new Date(year, month, 0).getDate();
+        day++;
+        if (day > daysInMonth) { day = 1; month++; if (month > 12) { month = 1; year++; } }
+        return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+
+    // --------------------- عرض الأيام ---------------------
+    function renderDays() {
+        const emp = employees[currentEmployeeIndex];
+        const tbody = document.getElementById('daysTableBody');
+        tbody.innerHTML = '';
+        let totalDiff = 0;
+        let totalDays = 0;
+        let holidayCount = 0;
+        const baseMinutes = (emp.workHours || 8) * 60;
+
+        emp.days.forEach((day, idx) => {
+            const isHoliday = day.holiday || false;
+            let diff = 0;
+            
+            if (!isHoliday) {
+                diff = calculateDiff(day, baseMinutes);
+                totalDiff += diff;
+                totalDays++;
+            } else {
+                holidayCount++;
+            }
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${day.date} ${isHoliday ? '<span class="holiday-tag">عطلة</span>' : ''}</td>
+                <td><input type="time" value="${day.start || ''}" ${isHoliday ? 'disabled' : ''} onchange="updateDay(${idx}, 'start', this.value)"></td>
+                <td>
+                    <div class="break-buttons">
+                        <input type="time" value="${day.breakStart || ''}" ${isHoliday ? 'disabled' : ''} onchange="updateDay(${idx}, 'breakStart', this.value)">
+                        <button class="btn-small btn-gray" onclick="setBreakZero(${idx})" ${isHoliday ? 'disabled' : ''}>صفر</button>
+                    </div>
+                </td>
+                <td>
+                    <div class="break-buttons">
+                        <input type="time" value="${day.breakEnd || ''}" ${isHoliday ? 'disabled' : ''} onchange="updateDay(${idx}, 'breakEnd', this.value)">
+                        <button class="btn-small btn-gray" onclick="setBreakEndZero(${idx})" ${isHoliday ? 'disabled' : ''}>صفر</button>
+                    </div>
+                </td>
+                <td><input type="time" value="${day.end || ''}" ${isHoliday ? 'disabled' : ''} onchange="updateDay(${idx}, 'end', this.value)"></td>
+                <td class="${isHoliday ? 'zero' : (diff >= 0 ? 'positive' : 'negative')}">
+                    ${isHoliday ? '---' : (diff >= 0 ? '+' : '') + diff + ' دقيقة'}
+                </td>
+                <td class="note-cell">
+                    <textarea placeholder="ملاحظة..." onchange="updateNote(${idx}, this.value)">${day.note || ''}</textarea>
+                </td>
+                <td>
+                    <button class="btn-small ${isHoliday ? 'btn-holiday active' : 'btn-holiday'}" onclick="toggleHoliday(${idx})">
+                        ${isHoliday ? '🚫 إلغاء' : '📅 عطلة'}
+                    </button>
+                </td>
+                <td><button class="btn-small btn-danger" onclick="deleteDay(${idx})">✖</button></td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('monthSummary').innerHTML = `
+            <h3>📊 ملخص الشهر</h3>
+            <p>ساعات العمل الأساسية: ${baseMinutes/60} ساعات</p>
+            <p>أيام العمل الفعلية: ${totalDays} يوم</p>
+            <p>أيام العطلة: ${holidayCount} يوم</p>
+            <p>مجموع الفروقات: <span class="${totalDiff >= 0 ? 'positive' : 'negative'}">${totalDiff >= 0 ? '+' : ''}${totalDiff} دقيقة</span></p>
+            <p>إجمالي الأيام المسجلة: ${emp.days.length}</p>
+        `;
+    }
+
+    // --------------------- حساب الفرق ---------------------
+    function calculateDiff(day, baseMinutes) {
+        const start = toMinutes(day.start);
+        const end = toMinutesAfterMidnight(day.end, day.start);
+        const breakStart = toMinutes(day.breakStart);
+        const breakEnd = toMinutes(day.breakEnd);
+        let workMinutes = end - start;
+        let breakMinutes = 0;
+        if (breakStart && breakEnd) {
+            breakMinutes = breakEnd - breakStart;
+            if (breakMinutes < 0) breakMinutes += 1440;
+        }
+        const actualWork = workMinutes - breakMinutes;
+        return actualWork - baseMinutes;
+    }
+
+    function toMinutes(time) {
+        if (!time) return 0;
+        const parts = time.split(':');
+        return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+    }
+
+    function toMinutesAfterMidnight(time, startTime) {
+        if (!time) return 0;
+        let minutes = toMinutes(time);
+        if (startTime) {
+            const startMin = toMinutes(startTime);
+            if (minutes < startMin) minutes += 1440;
+        }
+        return minutes;
+    }
+
+    // --------------------- تحديث يوم ---------------------
+    function updateDay(idx, field, value) {
+        const emp = employees[currentEmployeeIndex];
+        emp.days[idx][field] = value;
+        saveData();
+        renderDays();
+    }
+
+    function updateNote(idx, value) {
+        const emp = employees[currentEmployeeIndex];
+        emp.days[idx].note = value;
+        saveData();
+    }
+
+    // --------------------- زر صفر للاستراحة ---------------------
+    function setBreakZero(idx) {
+        const emp = employees[currentEmployeeIndex];
+        emp.days[idx].breakStart = '';
+        saveData();
+        renderDays();
+    }
+
+    function setBreakEndZero(idx) {
+        const emp = employees[currentEmployeeIndex];
+        emp.days[idx].breakEnd = '';
+        saveData();
+        renderDays();
+    }
+
+    // --------------------- تبديل العطلة ---------------------
+    function toggleHoliday(idx) {
+        const emp = employees[currentEmployeeIndex];
+        emp.days[idx].holiday = !emp.days[idx].holiday;
+        if (emp.days[idx].holiday) {
+            emp.days[idx].start = '';
+            emp.days[idx].breakStart = '';
+            emp.days[idx].breakEnd = '';
+            emp.days[idx].end = '';
+        }
+        saveData();
+        renderDays();
+    }
+
+    // --------------------- إضافة يوم ---------------------
+    function addDay() {
+        const emp = employees[currentEmployeeIndex];
+        let lastDate = null;
+        if (emp.days.length > 0) {
+            lastDate = emp.days[emp.days.length - 1].date;
+        }
+        const newDate = getNextDate(lastDate);
+        emp.days.push({
+            date: newDate,
+            start: "10:00",
+            breakStart: "14:00",
+            breakEnd: "15:00",
+            end: "01:00",
+            holiday: false,
+            note: ""
+        });
+        saveData();
+        renderDays();
+    }
+
+    // --------------------- حذف يوم ---------------------
+    function deleteDay(idx) {
+        if (!confirm('هل تريد حذف هذا اليوم؟')) return;
+        employees[currentEmployeeIndex].days.splice(idx, 1);
+        saveData();
+        renderDays();
+    }
+
+    // --------------------- حذف موظف ---------------------
+    function deleteEmployee() {
+        if (!confirm('هل تريد حذف هذا الموظف نهائياً؟')) return;
+        employees.splice(currentEmployeeIndex, 1);
+        saveData();
+        backToEmployees();
+    }
+
+    // --------------------- تحميل أولي ---------------------
+    loadData();
+    if (employees.length === 0) {
+        employees = [
+            { name: "أحمد", workHours: 8, days: [] },
+            { name: "محمد", workHours: 8, days: [] }
+        ];
+        saveData();
+    }
+</script>
+</body>
+</html>
